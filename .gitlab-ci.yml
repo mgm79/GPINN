@@ -1,0 +1,28 @@
+image: debian:8
+
+unit:
+  script:
+    - apt-get update --fix-missing && apt-get install -y wget bzip2 ca-certificates libglib2.0-0 libxext6 libsm6 libxrender1 git
+    - wget -q https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh; bash miniconda.sh -b -f -p $HOME/miniconda;
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - conda env create -q -f environment.yml -n pockets_env
+    - source activate pockets_env
+    - conda install pytest-cov
+    - export PYTHONPATH="$PWD:$PYTHONPATH"
+    - py.test -v --cov=kalasanty
+
+scripts:
+  script:
+    - apt-get update --fix-missing && apt-get install -y wget bzip2 ca-certificates libglib2.0-0 libxext6 libsm6 libxrender1 git
+    - wget -q https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh; bash miniconda.sh -b -f -p $HOME/miniconda;
+    - export PATH="$HOME/miniconda/bin:$PATH"
+    - conda env create -q -f environment.yml -n pockets_env
+    - source activate pockets_env
+    - export PYTHONPATH="$PWD:$PYTHONPATH"
+    - python scripts/prepare_dataset.py --dataset tests/datasets/pdbbind --output pdbbind_dataset.hdf --db_format pdbbind --verbose --exclude tests/exclude.txt --include tests/include.txt
+    - python scripts/prepare_dataset.py --dataset tests/datasets/scpdb --output scpdb_dataset.hdf --verbose
+    - python scripts/train.py -i pdbbind_dataset.hdf --batch_size 2 --verbose 1 --steps_per_epoch 3 --epochs 3 -o model_pdbbind
+    - python scripts/train.py -i scpdb_dataset.hdf --batch_size 3 -m model_pdbbind/model.hdf --verbose 2 --steps_per_epoch 2 --epochs 4 -o model_scpdb --train_ids tests/include.txt --test_ids tests/exclude.txt
+    - python scripts/predict.py -o predicted_pockets -i tests/datasets/scpdb/*/protein.mol2
+    - python scripts/predict.py -o predicted_pockets -i tests/datasets/pdbbind/*/*protein.mol2 -m model_scpdb/model.hdf
+    - if [ `ls predicted_pockets/*/pockets.cmap | wc -l` != 11 ]; then exit 1; fi
